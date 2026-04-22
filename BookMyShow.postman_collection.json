@@ -1,0 +1,567 @@
+{
+	"info": {
+		"_postman_id": "d6b4a8a0-0000-4000-a000-000000000001",
+		"name": "BookMyShow API",
+		"description": "Complete API collection for the BookMyShowOct24 Spring Boot app.\n\n## Two ways to test\n\n### 1. Individual endpoints (Users / Movies / Shows / Bookings / Payments / Coupons folders)\nOne-off testing of a single endpoint. Edit the body or the collection variable and fire it.\n\n### 2. Simulated Agent Flow folder ⭐ (recommended for end-to-end testing)\nThe same REST endpoints the AI agent's tools wrap, called in the order the agent would call them. This means:\n- **No Anthropic API key needed.** You're not hitting `/api/agent/chat`; you're calling the services directly.\n- **Deterministic.** The LLM is non-deterministic; this flow isn't.\n- **IDs chain automatically** — each request has a test script that captures the id it needs for the next request.\n- **Each step names the agent tool it simulates** so you can see the mapping (`SearchMoviesTool` → `GET /api/movies`, etc.).\n\nRun the **Simulated Agent Flow** folder top-down with the Collection Runner (or one request at a time). The chain is:\n\n```\nSign Up  →  search_movies  →  get_shows  →  get_show_seats\n         →  create_booking  →  apply_coupon  →  process_payment\n         →  (optional) cancel_booking\n```\n\n## Before you run\n\n1. Start the Spring Boot app. Default port is `8080` (matches the `baseUrl` variable).\n2. Seed at least one movie + show + seats into the DB so the search returns something (otherwise the later steps will have nothing to chain against).\n3. If you do want to test the live LLM agent too, set `ANTHROPIC_API_KEY` before starting the app, and uncomment the Live Agent folder below (currently empty).\n\n## Collection variables\n\n- `baseUrl` — `http://localhost:8080`\n- `userId` — authenticated user id (auto-captured after Sign Up)\n- `movieId`, `showId`, `showSeatId1`, `showSeatId2`, `bookingId`, `finalAmount` — auto-captured from the chained responses\n- `searchName`, `searchCity` — override to change what the simulated search looks for",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Simulated Agent Flow (no LLM needed)",
+			"description": "End-to-end booking flow that simulates what the AI agent would orchestrate — but bypasses the LLM. Each request below corresponds to exactly one AgentTool, calling the same service the tool wraps.\n\n**Mapping:**\n\n| Step | Agent Tool | REST endpoint |\n|---|---|---|\n| 0 | (prerequisite) | `POST /api/users/signup` |\n| 1 | `SearchMoviesTool` | `GET /api/movies` |\n| 2 | `GetShowsTool` | `GET /api/movies/{id}/shows` |\n| 3 | `GetShowSeatsTool` | `GET /api/shows/{id}/seats` |\n| 4 | `CreateBookingTool` | `POST /api/bookings` |\n| 5 | `ApplyCouponTool` | `POST /api/coupons/apply` |\n| 6 | `ProcessPaymentTool` | `POST /api/payments` |\n| 7 | `CancelBookingTool` | `DELETE /api/bookings/{id}` |\n\n**How to run**: open Postman's Collection Runner, select just this folder, click **Run**. Or run each request manually top-down — the variables chain via test scripts so later requests pick up the ids captured by earlier ones.",
+			"item": [
+				{
+					"name": "0. Sign up (prerequisite)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Sign up may succeed OR may fail with 'email already exists' on re-runs.",
+									"// Both are fine for this flow — we just need the userId variable set.",
+									"// If your service doesn't return userId, hardcode `userId` in the collection variables.",
+									"try {",
+									"    const json = pm.response.json();",
+									"    if (json && json.userId) {",
+									"        pm.collectionVariables.set('userId', json.userId);",
+									"    }",
+									"} catch (e) { /* ignore */ }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Tushar Harsan\",\n    \"email\": \"tushar@example.com\",\n    \"password\": \"hunter2\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "signup"]
+						},
+						"description": "Create a user. Run once; subsequent runs will fail with 'email already exists' (harmless for this flow — the `userId` variable just needs to be set). If the signup response doesn't include `userId`, hardcode it via the collection variable panel."
+					}
+				},
+				{
+					"name": "1. LLM simulated: search_movies",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// This simulates the agent calling SearchMoviesTool.",
+									"// Capture the first movie's id so get_shows can use it.",
+									"try {",
+									"    const movies = pm.response.json();",
+									"    pm.test('Got at least one movie', () => pm.expect(movies.length).to.be.greaterThan(0));",
+									"    if (movies.length > 0) {",
+									"        pm.collectionVariables.set('movieId', movies[0].id);",
+									"        console.log('Captured movieId =', movies[0].id, '(', movies[0].name, ')');",
+									"    }",
+									"} catch (e) { console.log('Parse error:', e); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies?name={{searchName}}&city={{searchCity}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies"],
+							"query": [
+								{ "key": "name", "value": "{{searchName}}", "description": "Partial title match (case-insensitive)" },
+								{ "key": "city", "value": "{{searchCity}}" },
+								{ "key": "language", "value": "HINDI", "disabled": true },
+								{ "key": "category", "value": "ACTION", "disabled": true },
+								{ "key": "minRating", "value": "7.0", "disabled": true }
+							]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"search_movies\",\"input\":{\"name\":\"push\",\"city\":\"Mumbai\"}}\n```\nHere we send the same parameters as query args. Test script saves `movies[0].id` into `movieId` for the next step."
+					}
+				},
+				{
+					"name": "2. LLM simulated: get_shows",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// This simulates GetShowsTool.",
+									"// Capture the first show's id so get_show_seats can use it.",
+									"try {",
+									"    const shows = pm.response.json();",
+									"    pm.test('Got at least one show', () => pm.expect(shows.length).to.be.greaterThan(0));",
+									"    if (shows.length > 0) {",
+									"        pm.collectionVariables.set('showId', shows[0].id);",
+									"        console.log('Captured showId =', shows[0].id);",
+									"    }",
+									"} catch (e) { console.log('Parse error:', e); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies/{{movieId}}/shows?city={{searchCity}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies", "{{movieId}}", "shows"],
+							"query": [
+								{ "key": "city", "value": "{{searchCity}}" },
+								{ "key": "date", "value": "2026-04-21", "description": "YYYY-MM-DD", "disabled": true }
+							]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"get_shows\",\"input\":{\"movieId\":1,\"city\":\"Mumbai\"}}\n```\nUses `movieId` captured from step 1. Saves `shows[0].id` into `showId`."
+					}
+				},
+				{
+					"name": "3. LLM simulated: get_show_seats",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// This simulates GetShowSeatsTool.",
+									"// Grab the first two AVAILABLE seats for the booking step.",
+									"try {",
+									"    const seats = pm.response.json();",
+									"    const available = seats.filter(s => s.showSeatStatus === 'AVAILABLE');",
+									"    pm.test('Got at least 2 AVAILABLE seats', () => pm.expect(available.length).to.be.greaterThan(1));",
+									"    if (available.length >= 2) {",
+									"        pm.collectionVariables.set('showSeatId1', available[0].id);",
+									"        pm.collectionVariables.set('showSeatId2', available[1].id);",
+									"        console.log('Captured seats:', available[0].id, available[1].id);",
+									"    }",
+									"} catch (e) { console.log('Parse error:', e); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/{{showId}}/seats",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shows", "{{showId}}", "seats"]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"get_show_seats\",\"input\":{\"showId\":1}}\n```\nResponse contains seats with `showSeatStatus` = AVAILABLE / BLOCKED / BOOKED. Test script picks the first two AVAILABLE ones for the booking."
+					}
+				},
+				{
+					"name": "4. LLM simulated: create_booking",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// This simulates CreateBookingTool.",
+									"// Capture booking.id so payment + cancel steps can use it.",
+									"try {",
+									"    const json = pm.response.json();",
+									"    const id = json && json.booking && json.booking.id;",
+									"    pm.test('Booking created', () => pm.expect(id).to.not.be.undefined);",
+									"    if (id) {",
+									"        pm.collectionVariables.set('bookingId', id);",
+									"        console.log('Captured bookingId =', id);",
+									"    }",
+									"} catch (e) { console.log('Parse error:', e); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"showSeatIds\": [{{showSeatId1}}, {{showSeatId2}}],\n    \"userId\": {{userId}}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings"]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"create_booking\",\"input\":{\"showSeatIds\":[501,502]}}\n```\n(Note: the LLM version gets `userId` from `AgentContext`, not from the tool input. Here we send it in the body since the plain REST endpoint takes it.)\n\nMoves seats from AVAILABLE → BLOCKED. State machine (if agent were involved): IDLE → BOOKING_PENDING."
+					}
+				},
+				{
+					"name": "5. LLM simulated: apply_coupon",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// This simulates ApplyCouponTool.",
+									"// Capture finalAmount so process_payment charges the discounted total.",
+									"try {",
+									"    const json = pm.response.json();",
+									"    pm.test('Coupon response has finalAmount', () => pm.expect(json.finalAmount).to.not.be.undefined);",
+									"    if (json.finalAmount !== undefined) {",
+									"        pm.collectionVariables.set('finalAmount', json.finalAmount);",
+									"        console.log('Final amount after coupon:', json.finalAmount);",
+									"    }",
+									"} catch (e) { console.log('Parse error:', e); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"FIRST50\",\n    \"amount\": 1000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/coupons/apply",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "coupons", "apply"]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"apply_coupon\",\"input\":{\"code\":\"FIRST50\",\"amount\":1000}}\n```\nReturns `{code, originalAmount, discount, finalAmount}`. Test script stores `finalAmount` so the next step charges the discounted total."
+					}
+				},
+				{
+					"name": "6. LLM simulated: process_payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"bookingId\": {{bookingId}},\n    \"paymentMode\": \"UPI\",\n    \"amount\": {{finalAmount}}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payments",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payments"]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"process_payment\",\"input\":{\"bookingId\":42,\"paymentMode\":\"UPI\",\"amount\":1000}}\n```\nMoves seats from BLOCKED → BOOKED and the booking from PENDING → CONFIRMED. State machine (if agent were involved): BOOKING_PENDING → BOOKING_CONFIRMED.\n\nPayment modes: UPI, CREDIT_CARD, DEBIT_CARD, NET_BANKING."
+					}
+				},
+				{
+					"name": "7. LLM simulated: cancel_booking (optional)",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "{{bookingId}}"]
+						},
+						"description": "LLM would emit:\n```json\n{\"tool\":\"cancel_booking\",\"input\":{\"bookingId\":42}}\n```\nFrees the seats and marks booking as cancelled. Fails if the show starts in less than 60 minutes (BookingService guard).\n\nState machine (if agent were involved): any → IDLE."
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"description": "Signup and login endpoints.",
+			"item": [
+				{
+					"name": "Sign Up",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Tushar Harsan\",\n    \"email\": \"tushar@example.com\",\n    \"password\": \"hunter2\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "signup"]
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"tushar@example.com\",\n    \"password\": \"hunter2\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "login"]
+						},
+						"description": "Body on GET is unusual but that's how the controller is written."
+					}
+				}
+			]
+		},
+		{
+			"name": "Movies",
+			"description": "Standalone movie search + shows for a movie.",
+			"item": [
+				{
+					"name": "Search movies — all filters",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies?name=Pushpa&city=Mumbai&language=HINDI&category=ACTION&minRating=7.0",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies"],
+							"query": [
+								{ "key": "name", "value": "Pushpa" },
+								{ "key": "city", "value": "Mumbai" },
+								{ "key": "language", "value": "HINDI", "description": "ENGLISH | HINDI | TAMIL | TELUGU | KANNADA | MALAYALAM | MARATHI | BENGALI | PUNJABI | SPANISH | FRENCH" },
+								{ "key": "category", "value": "ACTION" },
+								{ "key": "minRating", "value": "7.0" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Search movies — name only",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies?name=push",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies"],
+							"query": [
+								{ "key": "name", "value": "push" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Search movies — no filters (all)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies"]
+						}
+					}
+				},
+				{
+					"name": "Get shows for a movie",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/movies/{{movieId}}/shows?city=Mumbai&date=2026-04-21",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "movies", "{{movieId}}", "shows"],
+							"query": [
+								{ "key": "city", "value": "Mumbai" },
+								{ "key": "date", "value": "2026-04-21", "description": "YYYY-MM-DD" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Shows",
+			"description": "Seat map for a show.",
+			"item": [
+				{
+					"name": "Get show seats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/shows/{{showId}}/seats",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "shows", "{{showId}}", "seats"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Bookings",
+			"item": [
+				{
+					"name": "Create booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"showSeatIds\": [{{showSeatId1}}, {{showSeatId2}}],\n    \"userId\": {{userId}}\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings"]
+						}
+					}
+				},
+				{
+					"name": "Cancel booking",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "{{bookingId}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Payments",
+			"item": [
+				{
+					"name": "Process payment — UPI",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"bookingId\": {{bookingId}},\n    \"paymentMode\": \"UPI\",\n    \"amount\": 1000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payments",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payments"]
+						}
+					}
+				},
+				{
+					"name": "Process payment — Credit card",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"bookingId\": {{bookingId}},\n    \"paymentMode\": \"CREDIT_CARD\",\n    \"amount\": 1500\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/payments",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "payments"]
+						},
+						"description": "Valid payment modes: UPI, CREDIT_CARD, DEBIT_CARD, NET_BANKING."
+					}
+				}
+			]
+		},
+		{
+			"name": "Coupons",
+			"item": [
+				{
+					"name": "Apply coupon",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"code\": \"FIRST50\",\n    \"amount\": 1000\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/coupons/apply",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "coupons", "apply"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "userId",
+			"value": "1",
+			"type": "string",
+			"description": "Authenticated user id. Auto-populated by step 0 of the Simulated Agent Flow if signup returns a userId; otherwise set manually."
+		},
+		{
+			"key": "searchName",
+			"value": "push",
+			"type": "string",
+			"description": "Movie name to search for in step 1 of the flow."
+		},
+		{
+			"key": "searchCity",
+			"value": "Mumbai",
+			"type": "string",
+			"description": "City to filter by in steps 1 and 2 of the flow."
+		},
+		{
+			"key": "movieId",
+			"value": "1",
+			"type": "string",
+			"description": "Auto-captured from step 1 (search_movies)."
+		},
+		{
+			"key": "showId",
+			"value": "1",
+			"type": "string",
+			"description": "Auto-captured from step 2 (get_shows)."
+		},
+		{
+			"key": "showSeatId1",
+			"value": "1",
+			"type": "string",
+			"description": "Auto-captured from step 3 (get_show_seats). First AVAILABLE seat."
+		},
+		{
+			"key": "showSeatId2",
+			"value": "2",
+			"type": "string",
+			"description": "Auto-captured from step 3 (get_show_seats). Second AVAILABLE seat."
+		},
+		{
+			"key": "bookingId",
+			"value": "1",
+			"type": "string",
+			"description": "Auto-captured from step 4 (create_booking)."
+		},
+		{
+			"key": "finalAmount",
+			"value": "1000",
+			"type": "string",
+			"description": "Auto-captured from step 5 (apply_coupon). Used as the payment amount in step 6."
+		}
+	]
+}
