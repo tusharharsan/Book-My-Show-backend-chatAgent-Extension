@@ -1,0 +1,11 @@
+target/
+.idea/
+.vscode/
+.git/
+.gitignore
+.gitattributes
+*.iml
+.DS_Store
+HELP.md
+PRD_AI_FEATURES.md
+*.postman_collection.json
