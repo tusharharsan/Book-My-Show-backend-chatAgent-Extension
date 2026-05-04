@@ -1,4 +1,4 @@
-package com.example.bookmyshowoct24.agent;
+package com.example.bookmyshowoct24.chat;
 
 /*
  * States a booking conversation can be in.

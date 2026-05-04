@@ -28,7 +28,26 @@
     </scm>
     <properties>
         <java.version>17</java.version>
+        <!-- Spring AI 1.0.0 GA — pinned via the BOM below so every spring-ai-* artifact -->
+        <!-- resolves to the same compatible version without repeating <version> tags.    -->
+        <spring-ai.version>1.0.0</spring-ai.version>
     </properties>
+
+    <!-- The Spring AI BOM is a "version catalogue". Importing it means any spring-ai-*     -->
+    <!-- starter we declare below automatically picks up the version set above, so the    -->
+    <!-- four AI providers (Gemini, Anthropic, OpenAI, Ollama) always stay in lock-step.  -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -40,12 +59,16 @@
             <artifactId>spring-boot-starter-web</artifactId>
             <version>3.3.4</version>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <scope>runtime</scope>
-            <optional>true</optional>
-        </dependency>
+        <!-- spring-boot-devtools was removed intentionally.                                  -->
+        <!-- Reason: DevTools wraps project classes in a RestartClassLoader for hot-reload,   -->
+        <!-- while Spring AI's org.springframework.ai.tool.annotation.Tool is loaded by the   -->
+        <!-- base classloader. Under that split, MethodToolCallbackProvider's reflection call -->
+        <!-- `method.isAnnotationPresent(Tool.class)` returns false even when the @Tool       -->
+        <!-- annotation is clearly present in the bytecode — so startup fails with            -->
+        <!-- "No @Tool annotated methods found in DiscoveryTools". Without DevTools, both     -->
+        <!-- the annotation and the tool classes live in the same classloader and reflection  -->
+        <!-- works normally. Full restarts on code changes are fine for this teaching repo.   -->
+
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -79,15 +102,61 @@
             <artifactId>spring-boot-starter-websocket</artifactId>
         </dependency>
 
-        <!-- Official Anthropic Java SDK — powers the agentic AI booking assistant -->
-        <dependency>
-            <groupId>com.anthropic</groupId>
-            <artifactId>anthropic-java</artifactId>
-            <version>2.17.0</version>
-        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- ============================================================================== -->
+        <!-- Spring AI — the unified abstraction over LLM providers.                         -->
+        <!--                                                                                 -->
+        <!-- Each "starter" below auto-configures ONE provider: it exposes a ChatModel bean  -->
+        <!-- (e.g. VertexAiGeminiChatModel) that we inject into our orchestrator with        -->
+        <!-- @Qualifier. The beauty of Spring AI is that, once wrapped in a ChatClient, our  -->
+        <!-- business code never knows which provider is answering — swap one line of config -->
+        <!-- to re-route traffic. That is exactly what powers our Resilience4j fallback.     -->
+        <!-- ============================================================================== -->
+
+        <!-- 1) PRIMARY: Google Gemini via Vertex AI.                                        -->
+        <!-- Requires a GCP project and Application Default Credentials                      -->
+        <!-- (`gcloud auth application-default login` during local dev).                     -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-vertex-ai-gemini</artifactId>
+        </dependency>
+
+        <!-- 2) FALLBACK #1: Anthropic Claude. Plain API-key auth via ANTHROPIC_API_KEY.     -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-anthropic</artifactId>
+        </dependency>
+
+        <!-- 3) FALLBACK #2: OpenAI (GPT). Plain API-key auth via OPENAI_API_KEY.            -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!-- 4) LAST-RESORT: Ollama — local model runtime (we will run Qwen on port 11434). -->
+        <!-- No API key; just needs the ollama daemon running on the host.                  -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+
+        <!-- ============================================================================== -->
+        <!-- Resilience4j + Spring AOP — power the @Retry / @CircuitBreaker annotations     -->
+        <!-- that transparently route a failed primary-provider call to the next provider   -->
+        <!-- in the chain. AOP is how these annotations actually intercept method calls.    -->
+        <!-- ============================================================================== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>2.2.0</version>
         </dependency>
 
     </dependencies>

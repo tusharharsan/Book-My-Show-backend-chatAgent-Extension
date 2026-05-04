@@ -1,4 +1,4 @@
-package com.example.bookmyshowoct24.agent;
+package com.example.bookmyshowoct24.chat;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -8,15 +8,15 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @Configuration
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
-    private final AgentWebSocketHandler agentWebSocketHandler;
+    private final ChatWebSocketHandler chatWebSocketHandler;
 
-    public WebSocketConfig(AgentWebSocketHandler agentWebSocketHandler) {
-        this.agentWebSocketHandler = agentWebSocketHandler;
+    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler) {
+        this.chatWebSocketHandler = chatWebSocketHandler;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(agentWebSocketHandler, "/ws/agent")
+        registry.addHandler(chatWebSocketHandler, "/ws/agent")
                 .setAllowedOrigins("*");
     }
 }

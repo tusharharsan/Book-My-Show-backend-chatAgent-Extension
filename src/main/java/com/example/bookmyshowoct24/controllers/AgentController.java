@@ -1,6 +1,6 @@
 package com.example.bookmyshowoct24.controllers;
 
-import com.example.bookmyshowoct24.agent.AgentService;
+import com.example.bookmyshowoct24.ai.agent.BookMyShowAgentService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -10,16 +10,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /*
- * REST wrapper around AgentService so the agent can be tested from Postman
- * without a WebSocket client. For multi-turn chats, keep the same sessionId
- * across requests.
+ * REST wrapper around BookMyShowAgentService so the agent can be tested from Postman
+ * without a WebSocket client. For multi-turn chats, keep the same sessionId across
+ * requests — the orchestrator uses it as the ChatMemory conversationId so Gemini
+ * (and any failover provider) sees the full prior chat history.
  */
 @RestController
 @RequestMapping("/api/agent")
 public class AgentController {
-    private final AgentService agentService;
+    private final BookMyShowAgentService agentService;
 
-    public AgentController(AgentService agentService) {
+    public AgentController(BookMyShowAgentService agentService) {
         this.agentService = agentService;
     }
 

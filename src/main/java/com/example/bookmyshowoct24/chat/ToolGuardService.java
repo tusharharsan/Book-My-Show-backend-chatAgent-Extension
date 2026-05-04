@@ -1,4 +1,4 @@
-package com.example.bookmyshowoct24.agent;
+package com.example.bookmyshowoct24.chat;
 
 import org.springframework.stereotype.Service;
 

@@ -1,5 +1,6 @@
-package com.example.bookmyshowoct24.agent;
+package com.example.bookmyshowoct24.chat;
 
+import com.example.bookmyshowoct24.ai.agent.BookMyShowAgentService;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
@@ -9,7 +10,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 /*
- * Handles a single WebSocket chat session between a user and the agent.
+ * Handles a single WebSocket chat session between a user and BookBot.
  *
  * Message protocol (JSON):
  *   client -> server: {"userId": 1, "content": "I want to watch a movie in Mumbai"}
@@ -19,7 +20,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
  * and Jackson handles the JSON <-> record conversion. No manual JsonNode plumbing.
  */
 @Component
-public class AgentWebSocketHandler extends TextWebSocketHandler {
+public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     /*
      * Incoming message shape. Jackson deserialises the client's JSON into this.
@@ -33,13 +34,13 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ChatResponse(String sessionId, String content) {}
 
-    private final AgentService agentService;
+    private final BookMyShowAgentService agentService;
     private final SessionManager sessionManager;
     private final ObjectMapper objectMapper;
 
-    public AgentWebSocketHandler(AgentService agentService,
-                                 SessionManager sessionManager,
-                                 ObjectMapper objectMapper) {
+    public ChatWebSocketHandler(BookMyShowAgentService agentService,
+                                SessionManager sessionManager,
+                                ObjectMapper objectMapper) {
         this.agentService = agentService;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
